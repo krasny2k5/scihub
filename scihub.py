@@ -62,6 +62,8 @@ from StringIO import StringIO
 from osgeo import ogr
 import shapely.wkt
 import zipfile
+import re
+import time
 
 def usage():
     print '''usage: %s [-c|-d|-D path|-C path|-f|-h|-k|-l|-m|-v|-o]''' % sys.argv[0]
@@ -91,8 +93,8 @@ scihub configuration file, such as:
 ''' % sys.argv[0]
 
 def isodate(date):
-    iso, ignore = date.replace('T',' ').replace('Z','').split('.')
-    return iso
+    iso = re.search('([0-9]{4}-[0-9]{2}-[0-9]{2})T([0-9]{2}:[0-9]{2}:[0-9]{2})(\.[0-9]+)?Z',date)
+    return iso.group(1) + ' ' + iso.group(2)
 
 searchbase = 'https://scihub.esa.int/dhus/search'
 servicebase = 'https://scihub.esa.int/dhus/odata/v1'
@@ -133,7 +135,7 @@ for opt, arg in opts:
     if opt == '-f':
         force = True
     if opt == '-D':
-        dbfile = arg
+        db_file = arg
     if opt == '-L':
         list_products = True
         productsfile = arg
@@ -348,15 +350,24 @@ for product in products:
             if not os.path.exists(filename) or not zipfile.is_zipfile(filename) or overwrite:
                 if verbose: 
                     print "downloading %s data file..." % name
-                with open(filename, 'wb') as f:
-                    c = pycurl.Curl()
-                    c.setopt(c.URL,data)
-                    c.setopt(c.FOLLOWLOCATION, True)
-                    c.setopt(c.SSL_VERIFYPEER, False)
-                    c.setopt(c.USERPWD,auth)
-                    c.setopt(c.WRITEFUNCTION,f.write)
-                    c.perform()
-                    c.close()
+                loop = True
+                while loop:
+                    with open(filename, 'wb') as f:
+                        c = pycurl.Curl()
+                        c.setopt(c.URL,data)
+                        c.setopt(c.FOLLOWLOCATION, True)
+                        c.setopt(c.SSL_VERIFYPEER, False)
+                        c.setopt(c.USERPWD,auth)
+                        c.setopt(c.WRITEFUNCTION,f.write)
+                        try:
+                            c.perform()
+                            loop = False
+                        except:
+                            loop = True
+                            if verbose:
+                                print "download failed, restarting in 5 minutes..."
+                                time.sleep(300)
+                        c.close()
             else:
                 if verbose:
                     print "skipping existing file %s" % filename
